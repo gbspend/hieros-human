@@ -1,5 +1,5 @@
-# microfiction
-***Setup***
+# hieros-human
+***Setup (maybe don't need all of these...)***
 
 install:
 
