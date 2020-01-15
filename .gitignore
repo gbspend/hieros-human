@@ -99,4 +99,4 @@ oldoutput/*
 OLD/*
 bard/*
 *.p
-
+*.json

@@ -29,9 +29,8 @@ def genrec(node,parent,prev,lock):
 		nodePos = node['pos']
 		newword = analogy(prev,parent['word'],parent['pos'],node['word'],nodePos)
 		lock[i] = newword
-	if len(node['children']):
-		for child in node['children']:
-			genrec(child,node,newword,lock)
+	for child in node['children']:
+		genrec(child,node,newword,lock)
 
 def doit(format):
 	root = format['root']
