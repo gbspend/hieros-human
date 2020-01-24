@@ -100,3 +100,4 @@ OLD/*
 bard/*
 *.p
 *.json
+*.db
