@@ -1,0 +1,4 @@
+sqlite3 hieros.db < tables.sql
+cd ..
+python makeformatspickle.py
+mv format*.p server
