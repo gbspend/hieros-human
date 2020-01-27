@@ -114,6 +114,12 @@ def deleteStory(story_id):
 	exec_db("DELETE FROM stories WHERE id=?",(story_id,))
 	exec_db("DELETE FROM holds WHERE story_id=?",(story_id,))
 
+#recursive, start with the lock to be mutated (set to None), recursively set all lower children's index to None in locks
+def setLocksToMutate(node, locks):
+	locks[node['index']] = None
+	for c in node['children']:
+		setLocksToMutate(c,locks)
+
 #=Root========
 
 #return next root needed (will create new story)
@@ -127,13 +133,16 @@ def get_root():
 @app.route('/hieros/api/root', methods=['POST'])
 def insert_root():
 	if 'i' not in request.json or 'word' not in request.json:
+		print("i or word not in json:", request.json)
 		abort(400)
 	try:
 		i = int(request.json['i'])
 	except ValueError:
+		print("json[i] not int:", i)
 		abort(400)
 	word = request.json['word'].strip()
 	if not word or i >= len(formats):
+		print("json[word] empty:", request.json)
 		abort(400)
 
 	f = formats[i]
@@ -163,18 +172,20 @@ def get_analogy():
 	curr = [row for row in r if row[0] not in working][0]
 	story_id = curr[0]
 	format = formats[curr[1]]
-	locks = curr[2:8]
+	locks = list(curr[2:8])
 	hold_i = curr[8]
 	working.add(story_id)
 	
 	r = query_db("SELECT i,node_ind,prev_word,par_word,par_pos FROM holds WHERE story_id=? ORDER BY i", (story_id,))
 	if not r:
 		#delete from stories so we don't get caught in a loop when we GET analogy again
+		print("no matching story to id:",story_id)
 		deleteStory(story_id)
 		abort(400)
 	
 	i,node_ind,prev_word,par_word,par_pos = r[hold_i]
 	if i != hold_i:
+		print("story's hold_i doesn't match hold list's i:", hold_i, i)
 		deleteStory(story_id)
 		abort(400)
 	
@@ -186,20 +197,26 @@ def get_analogy():
 		#fix for mutation: find first None lock, advance hold_i to that point, set it in stories entry, and re-query holds... and reset all remaining locks to None (traverse format[root]! :D)
 			# so one update to stories: set new hold_i AND wordN's to None/NULL
 		
-		'''
-		OOPS
 		found = False
-		for i,l in enumerate(locks):
-			if l is None:
+		for row in r: #boo-yah
+			print(row)
+			node = findInd(root,row[1])
+			if locks[node['index']] is None:
 				found = True
 				break
-		if not found:
+		if not found or node['index'] == root['index']: #never mutate root
+			print("node to-mutate not found, or node is index:", found, locks, node)
 			deleteStory(story_id)
 			abort(400)
-		'''
+		i,node_ind,prev_word,par_word,par_pos = row
 		
 		#figure out which sub-locks need to be None/NULL
-		#exec_db("UPDATE stories SET word5='holo' WHERE id=?")
+		setLocksToMutate(node, locks)
+		
+		#after modifying locks, append hold_i and story_id
+		args = locks + [i, story_id]
+		exec_db("UPDATE stories SET word0=?, word1=?, word2=?, word3=?, word4=?, word5=?, hold_i=? WHERE id=?", args)
+		#we're off to the races for the response!
 	
 	#query = pword+" ("+ppos+") : "+node['word']+" ("+npos+") :: "+prev+" ("+ppos+") : _______ ("+npos+")"
 	#how much to "checksum"? none? just sanity check that par_word/pos and node_word/pos match on the other side!
@@ -211,9 +228,10 @@ def insert_analogy():
 	#sanity check that par_word/pos and node_word/pos match on this side
 	keys = ["new_word", "node_pos", "node_word",  "par_pos",  "par_word",  "prev_word",  "story_id"]
 	if not all([k in request.json for k in keys]):
+		print("missing keys from json:", request.json)
 		abort(400)
 	
-	
+	#sooooo, if the current hold's node's index is not None in locks, we have an error (it should have been set to None earlier (or not exist yet))
 
 	return make_response({},200)
 
