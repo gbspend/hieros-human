@@ -5,7 +5,8 @@ CREATE TABLE IF NOT EXISTS "holds" (
 	node_ind integer NOT NULL,
 	prev_word text NOT NULL,
 	par_word text NOT NULL,
-	par_pos text NOT NULL
+	par_pos text NOT NULL,
+	UNIQUE(story_id, i)
 );
 CREATE TABLE IF NOT EXISTS "stories" (
 	id integer PRIMARY KEY,
