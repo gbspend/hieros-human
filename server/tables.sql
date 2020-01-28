@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS "stories" (
 	word3 text,
 	word4 text,
 	word5 text,
-	hold_i integer NOT NULL
+	hold_i integer NOT NULL,
+	mutating integer
 );
 CREATE TABLE IF NOT EXISTS "queues" (
 	id integer PRIMARY KEY,

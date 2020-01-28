@@ -86,21 +86,21 @@ def findInd(node, i):
 	return None
 
 def pushHold(story_id, i, node_ind, prev_word, par_word, par_pos):
-	exec_db("INSERT OR IGNORE INTO holds(story_id, i, node_ind, prev_word, par_word, par_pos) VALUES (?, ?, ?, ?, ?, ?)", (story_id, i, node_ind, prev_word, par_word, par_pos))
+	exec_db("INSERT INTO holds(story_id, i, node_ind, prev_word, par_word, par_pos) VALUES (?, ?, ?, ?, ?, ?)", (story_id, i, node_ind, prev_word, par_word, par_pos))
 
 def pushKids(story_id, parent, prev):
 	pword = parent['word']
 	ppos = parent['pos']
-	r = parent['replace']
-	if r:
-		pword, ppos = r
+	repl = parent['replace']
+	if repl:
+		pword, ppos = repl
 	
 	#get next holds id
-	r = query_db("SELECT i FROM holds WHERE story_id=? ORDER BY i DESC", (story_id,))
-	if not r:
+	holds = query_db("SELECT i FROM holds WHERE story_id=? ORDER BY i DESC", (story_id,))
+	if not holds:
 		i = 0
 	else:
-		i = r[0][0]+1
+		i = holds[0][0]+1
 	
 	first = i
 	for c in parent['children']:
@@ -115,16 +115,18 @@ def deleteStory(story_id):
 	exec_db("DELETE FROM stories WHERE id=?",(story_id,))
 	exec_db("DELETE FROM holds WHERE story_id=?",(story_id,))
 
-#recursive, start with the lock to be mutated (set to None), recursively set all lower children's index to None in locks
-def setLocksToMutate(node, locks):
-	locks[node['index']] = None
-	print("setLocksToMutate:",node,locks)
-	for c in node['children']:
-		setLocksToMutate(c,locks)
-
 punct_transl = str.maketrans('', '', string.punctuation)
 def strip(s):
 	return s.translate(punct_transl).lower().strip()
+
+def getDescendants(node, des):
+	for c in node['children']:
+		des.add(c['index'])
+		getDescendants(c, des)
+
+def updateKids(story_id, parent, prev):	
+	for c in parent['children']:
+		exec_db("UPDATE holds SET prev_word=? WHERE story_id=? AND node_ind=?",(prev,story_id,c["index"]))
 
 #=Root========
 
@@ -173,65 +175,43 @@ def insert_root():
 #return next analogy needed
 @app.route('/hieros/api/analogy', methods=['GET'])
 def get_analogy():
-	r = query_db("SELECT * FROM stories WHERE hold_i<5 ORDER BY id")
+	stories = query_db("SELECT * FROM stories WHERE hold_i<5 ORDER BY id")
 	#(id, form, word0, word1, word2, word3, word4, word5, hold_i)
-	if not r or all(row[0] in working for row in r):
+	if not stories or all(row[0] in working for row in stories):
 		return make_response({},200) #nothing to work on (ask for something else)
 	
-	curr = [row for row in r if row[0] not in working][0]
+	curr = [row for row in stories if row[0] not in working][0]
 	story_id = curr[0]
 	format = formats[curr[1]]
 	locks = list(curr[2:8])
 	hold_i = curr[8]
 	working.add(story_id)
 	
-	r = query_db("SELECT i,node_ind,prev_word,par_word,par_pos FROM holds WHERE story_id=? ORDER BY i", (story_id,))
-	if not r:
+	holds = query_db("SELECT i,node_ind,prev_word,par_word,par_pos FROM holds WHERE story_id=? ORDER BY i", (story_id,))
+	if not holds:
 		#delete from stories so we don't get caught in a loop when we GET analogy again
 		print("no matching holds to story_id:",story_id)
 		deleteStory(story_id)
 		abort(400)
 	
-	i,node_ind,prev_word,par_word,par_pos = r[hold_i]
+	i,node_ind,prev_word,par_word,par_pos = holds[hold_i]
 	if i != hold_i:
-		print("story's hold_i doesn't match hold list's i:", hold_i, i)
+		print("(GET) story's hold_i doesn't match hold list's i:", hold_i, i)
 		deleteStory(story_id)
 		abort(400)
 	
 	root = format['root']
 	node = findInd(root,node_ind)
 	
-	if locks[node['index']] is not None:
-		#we're mutating
-		#TWO CASES:
-			#1) we're just starting mutation: all wordN are non-null (and hold_i < 5)
-			#2) we're in the middle of mutation: at least one non-null wordN (and hold_i < 5)
-		locks[node['index']] = None
-		
-		found = False
-		for row in r: #boo-yah
-			print(row)
-			node = findInd(root,row[1])
-			if locks[node['index']] is None:
-				found = True
-				break
-		if not found or node['index'] == root['index']: #never mutate root
-			print("node to-mutate not found, or node is index:", found, locks, node)
-			deleteStory(story_id)
-			abort(400)
-		i,node_ind,prev_word,par_word,par_pos = row
-		
-		#figure out which sub-locks need to be None/NULL
-		setLocksToMutate(node, locks)
-		
-		#after modifying locks, append hold_i and story_id
-		args = locks + [i, story_id]
-		exec_db("UPDATE stories SET word0=?, word1=?, word2=?, word3=?, word4=?, word5=?, hold_i=? WHERE id=?", args)
-		#we're off to the races for the response!
+	#if we're mutating, tell client to ask for a word other than not_word
+	not_word = None
+	curr_lock = locks[node['index']]
+	if curr_lock is not None:
+		not_word = curr_lock
 	
 	#query = pword+" ("+ppos+") : "+node['word']+" ("+npos+") :: "+prev+" ("+ppos+") : _______ ("+npos+")"
 	#how much to "checksum"? none? just sanity check that par_word/pos and node_word/pos match on the other side!
-	return jsonify({'story_id':story_id, "par_word":par_word, "par_pos":par_pos, "node_word":node['word'], "node_pos":node['pos'], "prev_word":prev_word})
+	return jsonify({'story_id':story_id, "par_word":par_word, "par_pos":par_pos, "node_word":node['word'], "node_pos":node['pos'], "prev_word":prev_word, "not_word":not_word})
 
 #receive analogy
 @app.route('/hieros/api/analogy', methods=['POST'])
@@ -254,51 +234,74 @@ def insert_analogy():
 	prev_word = request.json["prev_word"]
 	story_id = request.json["story_id"]
 	
-	r = query_db("SELECT * FROM stories WHERE id=?",(story_id,))
-	if not r:
+	stories = query_db("SELECT * FROM stories WHERE id=?",(story_id,))
+	if not stories:
 		print("no matching story to id:",story_id)
 		deleteStory(story_id)
 		abort(400)
-	curr = r[0]
+	curr = stories[0]
 	format = formats[curr[1]]
+	root = format['root']
 	locks = list(curr[2:8])
 	hold_i = curr[8]
+	mutating = curr[9] #mutating is HOLD index, not node index!
 	if story_id in working:
 		working.remove(story_id)
 	else:
 		pass #whatev?
 	
-	r = query_db("SELECT * FROM holds WHERE story_id=? AND i=?",(story_id,hold_i))
-	if not r:
+	holds = query_db("SELECT * FROM holds WHERE story_id=? ORDER BY i",(story_id,))
+	if not holds:
 		print("no matching holds to story_id:",story_id)
 		deleteStory(story_id)
 		abort(400)
-	dummy1,dummy2,hold_i,node_ind,h_prev_word,h_par_word,h_par_pos = r[0]
+	dummy1,dummy2,i,node_ind,h_prev_word,h_par_word,h_par_pos = holds[hold_i]
+	if i != hold_i:
+		print("(POST) story's hold_i doesn't match hold list's i:", hold_i, i)
+		deleteStory(story_id)
+		abort(400)
 	
-	node = findInd(format['root'],node_ind)
+	node = findInd(root,node_ind)
 	#sanity check that par_word/pos and node_word/pos match on this side
 	if prev_word != h_prev_word or par_word != h_par_word or par_pos != h_par_pos or node_word != node['word'] or node_pos != node['pos']:
 		print("something in request doesn't match:",prev_word,h_prev_word,par_word,h_par_word,par_pos,h_par_pos,node_word,node['word'],node_pos,node['pos'])
 		abort(400)
 	
-	#if the current hold's node's index is not None in locks, we have an error (it should have been set to None earlier (or not exist yet))
-	if locks[node_ind] is not None:
-		print("the current hold's node's index is not None:",locks[node_ind])
-		deleteStory(story_id)
-		abort(400)
+	#if we're mutating, the current hold's node's index should not be None in locks
+	if mutating is not None:
+		assert locks[node_ind] is not None
 	
 	#update locks and increment hold_i
 	locks[node_ind] = new_word
-	hold_i += 1
 	
-	#push kids if they aren't already there (it's working through a new story), otherwise don't (using UNIQUE and OR IGNORE! :D)
-	first = pushKids(story_id,node,new_word)
-	if not hold_i <= first:
-		print("new hold i is greater that first pushed kid:",hold_i,first)
-		abort(400)
+	if mutating is not None:
+		#don't just increment hold_i and pushkids, instead...
+		#get descendant indexes of mutating (index)
+		mut_node = findInd(root,holds[mutating][3]) #"mutating" is hold index; use it to get correct node index
+		des = set() #out var
+		getDescendants(mut_node, des)
+		print("des:",des)
+		#increment hold_i until either it's pointing at an index in des or hold_i == 5 :)
+		while True:
+			hold_i += 1
+			if hold_i >= 5:
+				break
+			curr_ind = holds[hold_i][3]
+			if curr_ind in des:
+				break
+		assert hold_i <=5
+		#instead of pushing kids, update kids with new prev word
+		updateKids(story_id,node,new_word)
 	
-	#update story with new lock and incremented hold_i
-		#don't have to do anything if it's done, right? GET score will just pick it up?...!
+	else:
+		hold_i += 1
+		first = pushKids(story_id,node,new_word)
+		if not hold_i <= first:
+			print("new hold i is greater that first pushed kid:",hold_i,first)
+			abort(400)
+	
+	#update story with new lock and hold_i
+		#don't have to do anything if it's done; GET analogy will ignore it and GET score will just pick it up :)
 	args = locks + [hold_i, story_id]
 	exec_db("UPDATE stories SET word0=?, word1=?, word2=?, word3=?, word4=?, word5=?, hold_i=? WHERE id=?", args)
 	return make_response({},200)
