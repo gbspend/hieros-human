@@ -18,18 +18,14 @@ CREATE TABLE IF NOT EXISTS "stories" (
 	word4 text,
 	word5 text,
 	hold_i integer NOT NULL,
-	mutating integer
-);
-CREATE TABLE IF NOT EXISTS "queues" (
-	id integer PRIMARY KEY,
-	story_id integer NOT NULL,
-	story text NOT NULL,
-	score integer NOT NULL,
-	root text NOT NULL
+	mutating integer,
+	root text,
+	score integer
 );
 CREATE TABLE IF NOT EXISTS "stales" (
 	id integer PRIMARY KEY,
 	story_id integer NOT NULL,
 	root text NOT NULL,
-	strikes integer NOT NULL
+	strikes integer NOT NULL,
+	UNIQUE(story_id, root)
 );

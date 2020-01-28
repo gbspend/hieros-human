@@ -3,6 +3,7 @@ import sqlite3
 import pickle
 import string
 from random import randint
+from itertools import chain, zip_longest
 
 app = Flask(__name__)
 
@@ -12,7 +13,7 @@ DATABASE = 'hieros.db'
 with open("formatssw.p","rb") as f:
 	formats = pickle.load(f)
 
-#something to store data (which stories are being worked on, etc)
+#stores which stories are being worked on / scored
 working = set()
 
 #https://docs.python.org/2/library/sqlite3.html
@@ -47,31 +48,6 @@ def close_connection(e):
 def not_found(error):
 	return make_response(jsonify({'error':'Not found'}), 404)
 
-#=====================
-#https://flask.palletsprojects.com/en/1.1.x/patterns/sqlite3/
-'''
-EXAMPLES:
-
-@app.route('/hieros/api/analogy', methods=['GET'])
-def get_tasks():
-	exec_db("INSERT INTO stales(story_id,root,strikes) VALUES (1,'B',0)")
-	for row in query_db('SELECT * FROM stales'):
-		print(row)
-	return jsonify({'tasks': 'this space intentionally left blank'})
-
-@app.route('/hieros/api/analogy', methods=['POST'])
-def insert_analogy():
-	if not request.json or not 'title' in request.json:
-		abort(400)
-	task = {
-		'id': tasks[-1]['id'] + 1,
-		'title': request.json['title'],
-		'description': request.json.get('description', ""),
-		'done': False
-	}
-	#DO STUFF
-	return jsonify({'task': task}), 201
-'''
 #=====================
 
 #finds given index in format tree, starting with "node" (root)
@@ -128,6 +104,19 @@ def updateKids(story_id, parent, prev):
 	for c in parent['children']:
 		exec_db("UPDATE holds SET prev_word=? WHERE story_id=? AND node_ind=?",(prev,story_id,c["index"]))
 
+def firstCharUp(s):
+	return s[0].upper() + s[1:]
+
+def plugin(plug,words):
+	parts = plug.split('W')
+	return ''.join([x for x in list(chain.from_iterable(zip_longest(parts, words))) if x is not None])
+
+def makeStory(form, lock):
+	for i in form['cap']:
+		lock[i] = firstCharUp(lock[i])
+	return plugin(form['plug'],lock)
+
+#https://flask.palletsprojects.com/en/1.1.x/patterns/sqlite3/
 #=Root========
 
 #return next root needed (will create new story)
@@ -141,20 +130,16 @@ def get_root():
 @app.route('/hieros/api/root', methods=['POST'])
 def insert_root():
 	if not request.json:
-		print("no json in request")
-		abort(400)
+		abort(400,"no json in request")
 	if 'i' not in request.json or 'word' not in request.json:
-		print("i or word not in json:", request.json)
-		abort(400)
+		abort(400,"i or word not in json:"+str(request.json.keys()))
 	try:
 		i = int(request.json['i'])
 	except ValueError:
-		print("json[i] not int:", i)
-		abort(400)
+		abort(400,"json[i] not int:"+str(i))
 	word = strip(request.json['word'])
 	if not word or i >= len(formats):
-		print("stripped json[word] empty:", request.json['word'])
-		abort(400)
+		abort(400,"stripped json[word] empty:"+str(request.json['word']))
 
 	f = formats[i]
 	root = f['root']
@@ -176,7 +161,6 @@ def insert_root():
 @app.route('/hieros/api/analogy', methods=['GET'])
 def get_analogy():
 	stories = query_db("SELECT * FROM stories WHERE hold_i<5 ORDER BY id")
-	#(id, form, word0, word1, word2, word3, word4, word5, hold_i)
 	if not stories or all(row[0] in working for row in stories):
 		return make_response({},200) #nothing to work on (ask for something else)
 	
@@ -190,15 +174,13 @@ def get_analogy():
 	holds = query_db("SELECT i,node_ind,prev_word,par_word,par_pos FROM holds WHERE story_id=? ORDER BY i", (story_id,))
 	if not holds:
 		#delete from stories so we don't get caught in a loop when we GET analogy again
-		print("no matching holds to story_id:",story_id)
 		deleteStory(story_id)
-		abort(400)
+		abort(400,"no matching holds to story_id:"+str(story_id))
 	
 	i,node_ind,prev_word,par_word,par_pos = holds[hold_i]
 	if i != hold_i:
-		print("(GET) story's hold_i doesn't match hold list's i:", hold_i, i)
 		deleteStory(story_id)
-		abort(400)
+		abort(400,"story's hold_i doesn't match hold list's i:"+str(hold_i)+" "+str(i))
 	
 	root = format['root']
 	node = findInd(root,node_ind)
@@ -210,23 +192,20 @@ def get_analogy():
 		not_word = curr_lock
 	
 	#query = pword+" ("+ppos+") : "+node['word']+" ("+npos+") :: "+prev+" ("+ppos+") : _______ ("+npos+")"
-	#how much to "checksum"? none? just sanity check that par_word/pos and node_word/pos match on the other side!
+	#we'll sanity check that par_word/pos and node_word/pos match on the other side!
 	return jsonify({'story_id':story_id, "par_word":par_word, "par_pos":par_pos, "node_word":node['word'], "node_pos":node['pos'], "prev_word":prev_word, "not_word":not_word})
 
 #receive analogy
 @app.route('/hieros/api/analogy', methods=['POST'])
 def insert_analogy():
 	if not request.json:
-		print("no json in request")
-		abort(400)
+		abort(400,"no json in request")
 	keys = ["new_word", "node_pos", "node_word",  "par_pos",  "par_word",  "prev_word",  "story_id"]
 	if not all([k in request.json for k in keys]):
-		print("missing keys from json:", request.json)
-		abort(400)
+		abort(400,"missing keys from json:"+str(request.json.keys()))
 	new_word = strip(request.json["new_word"])
 	if not new_word:
-		print("stripped request.json[new_word] is empty:", request.json["new_word"])
-		abort(400)
+		abort(400,"stripped request.json[new_word] is empty:"+str(request.json["new_word"]))
 	node_pos = request.json["node_pos"]
 	node_word = request.json["node_word"]
 	par_pos = request.json["par_pos"]
@@ -236,9 +215,8 @@ def insert_analogy():
 	
 	stories = query_db("SELECT * FROM stories WHERE id=?",(story_id,))
 	if not stories:
-		print("no matching story to id:",story_id)
 		deleteStory(story_id)
-		abort(400)
+		abort(400,"no matching story to id:"+str(story_id))
 	curr = stories[0]
 	format = formats[curr[1]]
 	root = format['root']
@@ -252,20 +230,17 @@ def insert_analogy():
 	
 	holds = query_db("SELECT * FROM holds WHERE story_id=? ORDER BY i",(story_id,))
 	if not holds:
-		print("no matching holds to story_id:",story_id)
 		deleteStory(story_id)
-		abort(400)
+		abort(400,"no matching holds to story_id:"+str(story_id))
 	dummy1,dummy2,i,node_ind,h_prev_word,h_par_word,h_par_pos = holds[hold_i]
 	if i != hold_i:
-		print("(POST) story's hold_i doesn't match hold list's i:", hold_i, i)
 		deleteStory(story_id)
-		abort(400)
+		abort(400,"story's hold_i doesn't match hold list's i:"+str(hold_i)+" "+str(i))
 	
 	node = findInd(root,node_ind)
 	#sanity check that par_word/pos and node_word/pos match on this side
 	if prev_word != h_prev_word or par_word != h_par_word or par_pos != h_par_pos or node_word != node['word'] or node_pos != node['pos']:
-		print("something in request doesn't match:",prev_word,h_prev_word,par_word,h_par_word,par_pos,h_par_pos,node_word,node['word'],node_pos,node['pos'])
-		abort(400)
+		abort(400,"something in request doesn't match:"+prev_word+" "+ h_prev_word+" "+ par_word+" "+ h_par_word+" "+ par_pos+" "+ h_par_pos+" "+ node_word+" "+ node['word']+" "+ node_pos+" "+ node['pos'])
 	
 	#if we're mutating, the current hold's node's index should not be None in locks
 	if mutating is not None:
@@ -297,8 +272,7 @@ def insert_analogy():
 		hold_i += 1
 		first = pushKids(story_id,node,new_word)
 		if not hold_i <= first:
-			print("new hold i is greater that first pushed kid:",hold_i,first)
-			abort(400)
+			abort(400,"new hold i is greater that first pushed kid:"+str(hold_i)+" "+str(first))
 	
 	#update story with new lock and hold_i
 		#don't have to do anything if it's done; GET analogy will ignore it and GET score will just pick it up :)
@@ -311,15 +285,46 @@ def insert_analogy():
 #return next score needed
 @app.route('/hieros/api/score', methods=['GET'])
 def get_score():
-	print(len(formats))
-	return jsonify({'response': 'this space intentionally left blank'})
+	stories = query_db("SELECT * FROM stories WHERE hold_i>=5 AND score IS NULL ORDER BY id")
+	#we can reuse "working" for scoring too :)
+	if not stories or all(row[0] in working for row in stories):
+		return make_response({},200) #nothing to work on (ask for something else)
+	curr = [row for row in stories if row[0] not in working][0]
+	story_id = curr[0]
+	format = formats[curr[1]]
+	locks = list(curr[2:8])
+	working.add(story_id)
+	
+	story = makeStory(format,locks)
+	return jsonify({'story_id':story_id, "story":story})
 
 #receive score
 @app.route('/hieros/api/score', methods=['POST'])
 def insert_score():
 	if not request.json:
-		print("no json in request")
-		abort(400)
+		abort(400,"no json in request")
+	if "score" not in request.json or "story_id" not in request.json:
+		abort(400,"score or story_id not in json:"+str(request.json.keys()))
+	try:
+		story_id = request.json["story_id"]
+		score = request.json["score"]
+	except ValueError:
+		abort(400,"json[story_id] or json[score] not int")
+	
+	#get root, so we can differentiate queues/stales
+	stories = query_db("SELECT * FROM stories WHERE id=?",(story_id,))
+	if not stories:
+		deleteStory(story_id)
+		abort(400,"no matching story to id:"+str(story_id))
+	curr = stories[0]
+	format = formats[curr[1]]
+	root = format['root']
+	locks = list(curr[2:8])
+	root_word = locks[root['index']]
+	
+	exec_db("UPDATE stories SET score=?,root=? WHERE id=?",(score,root_word,story_id))
+	#TODO: something with stales...
+	#mutate here! just copy stories entry (with corresponding holds entries), select word to mutate, set hold_i = mutating = selected wordN's holding entry, et voila (GET analogy will pick it up)!
 	return make_response({},200)
 
 #@app.route('/hieros/api/tasks/<int:task_id>', methods=['GET'])
