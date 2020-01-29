@@ -4,8 +4,10 @@ import pickle
 import string
 from random import randint, choice
 from itertools import chain, zip_longest
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app)
 
 DATABASE = 'hieros.db'
 
