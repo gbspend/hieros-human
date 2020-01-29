@@ -86,7 +86,6 @@ def pushKids(story_id, parent, prev):
 	return first
 
 #delete messed up story and all holds so that they don't gum up the works
-#TODO also clean up queues?
 def deleteStory(story_id):
 	exec_db("DELETE FROM stories WHERE id=?",(story_id,))
 	exec_db("DELETE FROM holds WHERE story_id=?",(story_id,))
@@ -339,7 +338,7 @@ def insert_score():
 		
 		holds = range(5) #no need to query :)
 		
-		#DO THIS N TIMES FOR "NUMBER OF CHILDREN"! :)
+		#do this N times for number of children :)
 		for i in range(3): #TODO: parameterize number of children			
 			mut_i = choice(holds)
 			
@@ -360,15 +359,15 @@ def get_bests():
 	bests = query_db("SELECT story,score FROM bests ORDER BY score DESC")
 	return jsonify({"bests":bests})
 
-#TODO: add a "director"? that figures out which is needed most (root, analogy, or score) and returns that GET automatically? :)
-	#as long as I can do that auto reroute this should be perfect
-
 #return next task as needed
 @app.route('/hieros/api/task', methods=['GET'])
 def get_task():
-	#prioritize getting one story all the way through... think this flow through (when to create new vs mutate...)
-	name = "analogy"
-	data = {"dummy":"dummy"}
+	#simple: score, then analogy, then root
+		#client could do GET task first, then if it does score/analogy it could directly GET the other one (to keep from giving the same task over and over), if it did root or either one returns no task, just do GET task again
+	for name,func in [("score",next_score),("analogy",next_analogy),("root",next_root)]:
+		data = func()
+		if data:
+			break
 	return jsonify({"endpoint":name, "task_data":data})
 
 if __name__ == '__main__':
