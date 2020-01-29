@@ -19,13 +19,11 @@ CREATE TABLE IF NOT EXISTS "stories" (
 	word5 text,
 	hold_i integer NOT NULL,
 	mutating integer,
-	root text,
 	score integer
 );
-CREATE TABLE IF NOT EXISTS "stales" (
+CREATE TABLE IF NOT EXISTS "bests" (
 	id integer PRIMARY KEY,
-	story_id integer NOT NULL,
-	root text NOT NULL,
-	strikes integer NOT NULL,
-	UNIQUE(story_id, root)
+	form integer NOT NULL,
+	story text,
+	score integer DEFAULT 0
 );

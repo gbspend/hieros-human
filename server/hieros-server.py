@@ -2,7 +2,7 @@ from flask import Flask, jsonify, abort, make_response, request, g
 import sqlite3
 import pickle
 import string
-from random import randint
+from random import randint, choice
 from itertools import chain, zip_longest
 
 app = Flask(__name__)
@@ -285,11 +285,11 @@ def insert_analogy():
 #return next score needed
 @app.route('/hieros/api/score', methods=['GET'])
 def get_score():
-	stories = query_db("SELECT * FROM stories WHERE hold_i>=5 AND score IS NULL ORDER BY id")
+	stories = [row for row in query_db("SELECT * FROM stories WHERE hold_i>=5 AND score IS NULL ORDER BY id") if row[0] not in working]
 	#we can reuse "working" for scoring too :)
-	if not stories or all(row[0] in working for row in stories):
+	if not stories:
 		return make_response({},200) #nothing to work on (ask for something else)
-	curr = [row for row in stories if row[0] not in working][0]
+	curr = stories[0]
 	story_id = curr[0]
 	format = formats[curr[1]]
 	locks = list(curr[2:8])
@@ -311,23 +311,64 @@ def insert_score():
 	except ValueError:
 		abort(400,"json[story_id] or json[score] not int")
 	
-	#get root, so we can differentiate queues/stales
 	stories = query_db("SELECT * FROM stories WHERE id=?",(story_id,))
 	if not stories:
 		deleteStory(story_id)
-		abort(400,"no matching story to id:"+str(story_id))
-	curr = stories[0]
-	format = formats[curr[1]]
-	root = format['root']
-	locks = list(curr[2:8])
-	root_word = locks[root['index']]
+		abort(400,"no story with story_id:"+str(story_id))
 	
-	exec_db("UPDATE stories SET score=?,root=? WHERE id=?",(score,root_word,story_id))
-	#TODO: something with stales...
+	exec_db("UPDATE stories SET score=? WHERE id=?",(score,story_id)) #now GET score won't return it
+	
+	#end of "putting scored story in queue; moving on to "pop top story from queue"
+	
+	#contrary to HIEROS, we just have one big priority queue; don't speciate at all, neither by root nor even format
+		#don't worry about strikes for now, the top score in bests is just the current output
+	best = query_db("SELECT * FROM stories WHERE score IS NOT NULL ORDER BY score DESC LIMIT 1",one=True)
+	if best:
+		story_id = best[0]
+		form_i = best[1]
+		score = best[-1]
+		
+		#if score is best, put in bests (top of bests is current output; keep rest for posterity)
+		top = query_db("SELECT score FROM bests ORDER BY score DESC LIMIT 1",one=True)
+		if not top or score > top[0]:
+			format = formats[best[1]]
+			locks = list(best[2:8])
+			story = makeStory(format,locks)
+			exec_db("INSERT INTO bests (form,story,score) VALUES (?,?,?)",(form_i,story,score))
+		
+		holds = range(5) #no need to query :)
+		
+		#DO THIS N TIMES FOR "NUMBER OF CHILDREN"! :)
+		for i in range(3): #TODO: parameterize number of children			
+			mut_i = choice(holds)
+			
+			#copy story to mutate
+			new_story = exec_db("INSERT INTO stories SELECT NULL,form,word0,word1,word2,word3,word4,word5,?,?,NULL FROM stories WHERE id=?",(mut_i,mut_i,story_id))
+			#copy corresponding holds
+			exec_db("INSERT INTO holds SELECT NULL,?,i,node_ind,prev_word,par_word,par_pos FROM holds WHERE story_id=?",(new_story,story_id))
+			#these are now ready to get mutated by analogy :)
+		
+		#"pop" from priority queue
+		deleteStory(story_id)
 	#mutate here! just copy stories entry (with corresponding holds entries), select word to mutate, set hold_i = mutating = selected wordN's holding entry, et voila (GET analogy will pick it up)!
 	return make_response({},200)
 
-#@app.route('/hieros/api/tasks/<int:task_id>', methods=['GET'])
+#return best stories so far
+@app.route('/hieros/api/bests', methods=['GET'])
+def get_bests():
+	bests = query_db("SELECT story,score FROM bests ORDER BY score DESC")
+	return jsonify({"bests":bests})
+
+#TODO: add a "director"? that figures out which is needed most (root, analogy, or score) and returns that GET automatically? :)
+	#as long as I can do that auto reroute this should be perfect
+
+#return next task as needed
+@app.route('/hieros/api/task', methods=['GET'])
+def get_task():
+	#prioritize getting one story all the way through... think this flow through (when to create new vs mutate...)
+	name = "analogy"
+	data = {"dummy":"dummy"}
+	return jsonify({"endpoint":name, "task_data":data})
 
 if __name__ == '__main__':
 	assert formats
