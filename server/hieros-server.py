@@ -4,7 +4,7 @@ import pickle
 import string
 from random import randint, choice
 from itertools import chain, zip_longest
-from flask_cors import CORS
+from flask_cors import CORS,cross_origin
 
 app = Flask(__name__)
 CORS(app)
@@ -132,6 +132,7 @@ def next_root():
 
 #receive root & create new story to work on
 @app.route('/hieros/api/root', methods=['POST'])
+@cross_origin()
 def insert_root():
 	if not request.json:
 		abort(400,"no json in request")
@@ -196,6 +197,7 @@ def next_analogy():
 
 #receive analogy
 @app.route('/hieros/api/analogy', methods=['POST'])
+@cross_origin()
 def insert_analogy():
 	if not request.json:
 		abort(400,"no json in request")
@@ -302,6 +304,7 @@ def next_score():
 
 #receive score
 @app.route('/hieros/api/score', methods=['POST'])
+@cross_origin()
 def insert_score():
 	if not request.json:
 		abort(400,"no json in request")
@@ -374,7 +377,7 @@ def get_task():
 
 if __name__ == '__main__':
 	assert formats
-	app.run(debug=True)
+	app.run(host='0.0.0.0')
 
 
 
