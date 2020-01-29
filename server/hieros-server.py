@@ -311,8 +311,8 @@ def insert_score():
 	if "score" not in request.json or "story_id" not in request.json:
 		abort(400,"score or story_id not in json:"+str(request.json.keys()))
 	try:
-		story_id = request.json["story_id"]
-		score = request.json["score"]
+		story_id = int(request.json["story_id"])
+		score = int(request.json["score"])
 	except ValueError:
 		abort(400,"json[story_id] or json[score] not int")
 	
