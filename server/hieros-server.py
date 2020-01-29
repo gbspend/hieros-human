@@ -122,9 +122,12 @@ def makeStory(form, lock):
 #return next root needed (will create new story)
 @app.route('/hieros/api/root', methods=['GET'])
 def get_root():
+	return jsonify(next_root())
+
+def next_root():
 	i = randint(0,len(formats)-1)
 	root = formats[i]['root']
-	return jsonify({'i':i,'root_word':root['word'],'root_pos':root['pos']})
+	return {'i':i,'root_word':root['word'],'root_pos':root['pos']}
 
 #receive root & create new story to work on
 @app.route('/hieros/api/root', methods=['POST'])
@@ -160,9 +163,12 @@ def insert_root():
 #return next analogy needed
 @app.route('/hieros/api/analogy', methods=['GET'])
 def get_analogy():
+	return jsonify(next_analogy())
+
+def next_analogy():
 	stories = query_db("SELECT * FROM stories WHERE hold_i<5 ORDER BY id")
 	if not stories or all(row[0] in working for row in stories):
-		return make_response({},200) #nothing to work on (ask for something else)
+		return {} #nothing to work on (ask for something else)
 	
 	curr = [row for row in stories if row[0] not in working][0]
 	story_id = curr[0]
@@ -172,15 +178,7 @@ def get_analogy():
 	working.add(story_id)
 	
 	holds = query_db("SELECT i,node_ind,prev_word,par_word,par_pos FROM holds WHERE story_id=? ORDER BY i", (story_id,))
-	if not holds:
-		#delete from stories so we don't get caught in a loop when we GET analogy again
-		deleteStory(story_id)
-		abort(400,"no matching holds to story_id:"+str(story_id))
-	
 	i,node_ind,prev_word,par_word,par_pos = holds[hold_i]
-	if i != hold_i:
-		deleteStory(story_id)
-		abort(400,"story's hold_i doesn't match hold list's i:"+str(hold_i)+" "+str(i))
 	
 	root = format['root']
 	node = findInd(root,node_ind)
@@ -193,7 +191,7 @@ def get_analogy():
 	
 	#query = pword+" ("+ppos+") : "+node['word']+" ("+npos+") :: "+prev+" ("+ppos+") : _______ ("+npos+")"
 	#we'll sanity check that par_word/pos and node_word/pos match on the other side!
-	return jsonify({'story_id':story_id, "par_word":par_word, "par_pos":par_pos, "node_word":node['word'], "node_pos":node['pos'], "prev_word":prev_word, "not_word":not_word})
+	return {'story_id':story_id, "par_word":par_word, "par_pos":par_pos, "node_word":node['word'], "node_pos":node['pos'], "prev_word":prev_word, "not_word":not_word}
 
 #receive analogy
 @app.route('/hieros/api/analogy', methods=['POST'])
@@ -285,10 +283,13 @@ def insert_analogy():
 #return next score needed
 @app.route('/hieros/api/score', methods=['GET'])
 def get_score():
+	return jsonify(next_score())
+
+def next_score():
 	stories = [row for row in query_db("SELECT * FROM stories WHERE hold_i>=5 AND score IS NULL ORDER BY id") if row[0] not in working]
 	#we can reuse "working" for scoring too :)
 	if not stories:
-		return make_response({},200) #nothing to work on (ask for something else)
+		return {} #nothing to work on (ask for something else)
 	curr = stories[0]
 	story_id = curr[0]
 	format = formats[curr[1]]
@@ -296,7 +297,7 @@ def get_score():
 	working.add(story_id)
 	
 	story = makeStory(format,locks)
-	return jsonify({'story_id':story_id, "story":story})
+	return {'story_id':story_id, "story":story}
 
 #receive score
 @app.route('/hieros/api/score', methods=['POST'])
