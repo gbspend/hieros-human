@@ -5,6 +5,7 @@ import string
 from random import randint, choice
 from itertools import chain, zip_longest
 from flask_cors import CORS,cross_origin
+from collections import defaultdict
 
 app = Flask(__name__)
 CORS(app)
@@ -17,6 +18,9 @@ with open("formatssw.p","rb") as f:
 
 #stores which stories are being worked on / scored
 working = set()
+
+#every so often, just ask for a new root (keep it fresh)
+nonnew = 0
 
 #https://docs.python.org/2/library/sqlite3.html
 def get_db():
@@ -186,6 +190,7 @@ def next_analogy():
 	node = findInd(root,node_ind)
 	
 	#if we're mutating, tell client to ask for a word other than not_word
+	#TODO: omit if the word we're replacing (node_word) is a stopword? It's hard to come up with lots of those
 	not_word = None
 	curr_lock = locks[node['index']]
 	if curr_lock is not None:
@@ -369,10 +374,23 @@ def get_bests():
 def get_task():
 	#simple: score, then analogy, then root
 		#client could do GET task first, then if it does score/analogy it could directly GET the other one (to keep from giving the same task over and over), if it did root or either one returns no task, just do GET task again
-	for name,func in [("score",next_score),("analogy",next_analogy),("root",next_root)]:
-		data = func()
-		if data:
-			break
+	#safety valve
+	global nonnew
+	neednew = nonnew > 20 #TODO: parameterize how often to inject a new story
+	if not neednew:
+		formats = query_db("SELECT DISTINCT form FROM STORIES");
+	if neednew or not formats or len(formats) < 5: #TODO: parameterize "min distinct formats"
+		name = "root"
+		data = next_root()
+	else:
+		for name,func in [("score",next_score),("analogy",next_analogy),("root",next_root)]:
+			data = func()
+			if data:
+				break
+	if name != "root":
+		nonnew += 1
+	else:
+		nonnew = 0
 	return jsonify({"endpoint":name, "task_data":data})
 
 if __name__ == '__main__':
