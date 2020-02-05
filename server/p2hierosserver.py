@@ -2,8 +2,8 @@ from flask import Flask, jsonify, abort, make_response, request, g
 import sqlite3
 import pickle
 import string
-from random import randint, choice
-from itertools import chain, izip_longest
+from random import randint, choice, shuffle
+from itertools import chain, izip_longest, combinations
 from flask_cors import CORS
 
 app = Flask(__name__)
@@ -20,6 +20,9 @@ working = set()
 
 #every so often, just ask for a new root (keep it fresh)
 nonnew = 0
+
+#save which stories to compare next for GET post (singleton)
+post_comps = None
 
 #https://docs.python.org/2/library/sqlite3.html
 def get_db():
@@ -389,17 +392,23 @@ def get_task():
 	return jsonify({"endpoint":name, "task_data":data})
 
 #post hoc scoring analysis endpoints
+#! Make sure bests.post_score are 0 in hieros.db before running (don't want to count twice)!
 @app.route('/hieros/api/post', methods=['GET'])
 def get_post():
 	bests = query_db("SELECT id,story,score FROM bests")
-	#TODO: pick two... somehow
 	if not bests or len(bests) < 2:
 		return make_response({},200)
-	i = randint(0,len(bests)-1)
-	j = i
-	while j == i:
-		j = randint(0,len(bests)-1)
-	return jsonify({"story1":bests[i],"story2":bests[j]})
+	
+	global post_comps
+	if post_comps is None:
+		post_comps = list(combinations(range(len(bests)),2))
+		shuffle(post_comps)
+	
+	if post_comps:
+		i,j = post_comps.pop()
+		return jsonify({"story1":bests[i],"story2":bests[j]})
+	else:
+		return make_response({},200)
 
 @app.route('/hieros/api/post', methods=['POST'])
 def insert_post():
