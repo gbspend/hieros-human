@@ -27,3 +27,12 @@ CREATE TABLE IF NOT EXISTS "bests" (
 	story text,
 	score integer DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS "analogies" (
+	id integer PRIMARY KEY,
+	par_word text NOT NULL,
+	par_pos text NOT NULL,
+	ch_word text NOT NULL,
+	ch_pos text NOT NULL,
+	prev_word text NOT NULL,
+	next_word text NOT NULL
+);

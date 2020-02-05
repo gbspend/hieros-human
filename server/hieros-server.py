@@ -7,6 +7,8 @@ from itertools import chain, zip_longest
 from flask_cors import CORS,cross_origin
 from collections import defaultdict
 
+#OUT OF DATE! Use p2hierosserver.py
+
 app = Flask(__name__)
 CORS(app)
 
@@ -397,7 +399,7 @@ if __name__ == '__main__':
 	assert formats
 	app.run(host='0.0.0.0')
 
-
+#OUT OF DATE! Use p2hierosserver.py
 
 
 

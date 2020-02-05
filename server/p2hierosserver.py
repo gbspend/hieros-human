@@ -211,6 +211,9 @@ def insert_analogy():
 	prev_word = request.json["prev_word"]
 	story_id = request.json["story_id"]
 	
+	#store all analogies for later analysis
+	exec_db("INSERT INTO analogies (par_word,par_pos,ch_word,ch_pos,prev_word,next_word) VALUES (?,?,?,?,?,?)",(par_word,par_pos,node_word,node_pos,prev_word,new_word))
+	
 	stories = query_db("SELECT * FROM stories WHERE id=?",(story_id,))
 	if not stories:
 		deleteStory(story_id)
@@ -328,13 +331,11 @@ def insert_score():
 		form_i = best[1]
 		score = best[-1]
 		
-		#if score is best, put in bests (top of bests is current output; keep rest for posterity)
-		top = query_db("SELECT score FROM bests ORDER BY score DESC LIMIT 1",one=True)
-		if not top or score > top[0]:
-			format = formats[best[1]]
-			locks = list(best[2:8])
-			story = makeStory(format,locks)
-			exec_db("INSERT INTO bests (form,story,score) VALUES (?,?,?)",(form_i,story,score))
+		#UPDATE: insert all stories for posterity ("bests" is now a slight misnomer)
+		format = formats[best[1]]
+		locks = list(best[2:8])
+		story = makeStory(format,locks)
+		exec_db("INSERT INTO bests (form,story,score) VALUES (?,?,?)",(form_i,story,score))
 		
 		holds = range(5) #no need to query :)
 		
@@ -372,7 +373,7 @@ def get_task():
 
 if __name__ == '__main__':
 	assert formats
-	app.run(debug=True)
+	app.run(host='0.0.0.0')
 
 
 
