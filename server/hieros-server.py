@@ -4,8 +4,7 @@ import pickle
 import string
 from random import randint, choice
 from itertools import chain, zip_longest
-from flask_cors import CORS,cross_origin
-from collections import defaultdict
+from flask_cors import CORS
 
 #OUT OF DATE! Use p2hierosserver.py
 
@@ -138,7 +137,6 @@ def next_root():
 
 #receive root & create new story to work on
 @app.route('/hieros/api/root', methods=['POST'])
-@cross_origin()
 def insert_root():
 	if not request.json:
 		abort(400,"no json in request")
@@ -204,7 +202,6 @@ def next_analogy():
 
 #receive analogy
 @app.route('/hieros/api/analogy', methods=['POST'])
-@cross_origin()
 def insert_analogy():
 	if not request.json:
 		abort(400,"no json in request")
@@ -263,7 +260,6 @@ def insert_analogy():
 		mut_node = findInd(root,holds[mutating][3]) #"mutating" is hold index; use it to get correct node index
 		des = set() #out var
 		getDescendants(mut_node, des)
-		print("des:",des)
 		#increment hold_i until either it's pointing at an index in des or hold_i == 5 :)
 		while True:
 			hold_i += 1
@@ -311,7 +307,6 @@ def next_score():
 
 #receive score
 @app.route('/hieros/api/score', methods=['POST'])
-@cross_origin()
 def insert_score():
 	if not request.json:
 		abort(400,"no json in request")
@@ -380,7 +375,7 @@ def get_task():
 	global nonnew
 	neednew = nonnew > 20 #TODO: parameterize how often to inject a new story
 	if not neednew:
-		formats = query_db("SELECT DISTINCT form FROM STORIES");
+		formats = query_db("SELECT DISTINCT form FROM stories");
 	if neednew or not formats or len(formats) < 5: #TODO: parameterize "min distinct formats"
 		name = "root"
 		data = next_root()
