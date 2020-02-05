@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS "bests" (
 	id integer PRIMARY KEY,
 	form integer NOT NULL,
 	story text,
-	score integer DEFAULT 0
+	score integer DEFAULT 0,
+	post_score integer DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS "analogies" (
 	id integer PRIMARY KEY,

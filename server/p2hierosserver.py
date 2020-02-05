@@ -388,6 +388,37 @@ def get_task():
 		nonnew = 0
 	return jsonify({"endpoint":name, "task_data":data})
 
+#post hoc scoring analysis endpoints
+@app.route('/hieros/api/post', methods=['GET'])
+def get_post():
+	bests = query_db("SELECT id,story,score FROM bests")
+	#TODO: pick two... somehow
+	if not bests or len(bests) < 2:
+		return make_response({},200)
+	i = randint(0,len(bests)-1)
+	j = i
+	while j == i:
+		j = randint(0,len(bests)-1)
+	return jsonify({"story1":bests[i],"story2":bests[j]})
+
+@app.route('/hieros/api/post', methods=['POST'])
+def insert_post():
+	if not request.json:
+		abort(400,"no json in request")
+	if "story1" not in request.json or "story2" not in request.json or "choice" not in request.json:
+		abort(400,"choice, score, or story_id not in json:"+str(request.json.keys()))
+	
+	try:
+		choice = int(request.json["choice"])
+	except ValueError:
+		abort(400,"json[choice] not int")
+	if choice != 1 and choice != 2:
+		abort(400,"choice must be 1 or 2")
+	k = "story"+str(choice)
+	id,story,score = request.json[k]
+	exec_db("UPDATE bests SET post_score = post_score + 1 WHERE id=?",(id,))
+	return make_response({},200)
+
 if __name__ == '__main__':
 	assert formats
 	app.run(host='0.0.0.0')
