@@ -1,2 +1,8 @@
 Run server:
 nohup gunicorn --bind 0.0.0.0:5000 wsgi &
+nohup sudo gunicorn --certfile /etc/letsencrypt/live/mind.cs.byu.edu/fullchain.pem --keyfile /etc/letsencrypt/live/mind.cs.byu.edu/privkey.pem --bind 0.0.0.0:5000 wsgi &
+	^if that doesn't work, just sudo something else for it to remember pw (nohup eats the pw and we have to use & at the end; ctrl-z does not work)
+
+to kill, look for parent id (PPID) of gunicorn, which will be sudo, and kill that before gunicorn!
+pgrep gunicorn
+ps -Al | grep gunicorn
